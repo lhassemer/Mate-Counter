@@ -61,6 +61,10 @@ input[type=color]{width:42px;height:40px;border:1px solid var(--line);border-rad
 .seg{display:inline-flex;border:1px solid var(--line);border-radius:10px;overflow:hidden}
 .seg button{border:0;background:transparent;color:var(--muted);padding:6px 12px;font-weight:600;font-size:13px}
 .seg button.on{background:var(--accent);color:var(--accent-ink)}
+.days{display:flex;gap:6px;flex-wrap:wrap}
+.days button{border:1px solid var(--line);background:var(--bg);color:var(--muted);border-radius:10px;padding:6px 10px;font-weight:600;font-size:13px}
+.days button.on{background:var(--accent);color:var(--accent-ink);border-color:var(--accent)}
+.undo{width:100%;margin-top:8px;text-align:center}
 .tabs{display:flex;gap:6px;margin-bottom:12px;overflow-x:auto}
 .tabs button{border:1px solid var(--line);background:var(--card);color:var(--muted);border-radius:999px;padding:8px 15px;font-weight:600;white-space:nowrap}
 .tabs button.on{background:var(--text);color:var(--bg);border-color:var(--text)}
@@ -135,14 +139,15 @@ var brands = [];             // [{id,name,color}]
 var drinksBy = {};           // playerId -> [{id,t,b}]
 var meId = null;
 var selectedBrand = null;
-var dayMode = "today";
+var dayOffset = 0;          // 0 = heute, 1 = gestern, ... bis 7
+var undoStack = [];
 var tab = "board";
 var editingName = false, addingBrand = false, switching = false;
 var nameDraft = "", newPlayerDraft = "", brandNameDraft = "", brandColorDraft = "#8b5cf6";
 var loaded = false, loadError = "", busy = false, pendingRender = false;
 var toastTimer = null;
 
-try { meId = localStorage.getItem("mate_me"); selectedBrand = localStorage.getItem("mate_brand"); } catch(e){}
+try { meId = localStorage.getItem("mate_me"); selectedBrand = localStorage.getItem("mate_brand"); undoStack = JSON.parse(localStorage.getItem("mate_undo") || "[]"); if (!Array.isArray(undoStack)) undoStack = []; } catch(e){ undoStack = []; }
 
 var app = document.getElementById("app");
 var configured = SUPABASE_URL.indexOf("http") === 0 && SUPABASE_KEY.length > 20 && SUPABASE_KEY.indexOf("HIER_") !== 0;
@@ -205,10 +210,13 @@ async function api(path, method, body, prefer){
 async function fetchAll(path){
   var out = [], from = 0, size = 1000;
   for (;;) {
-    var res = await fetch(SUPABASE_URL.replace(/\/$/, "") + "/rest/v1/" + path, {
-      headers: headers({"Range-Unit":"items", "Range":from + "-" + (from + size - 1)})
-    });
-    if (!res.ok) throw new Error("HTTP " + res.status);
+    var url = SUPABASE_URL.replace(/\/$/, "") + "/rest/v1/" + path + (path.indexOf("?") >= 0 ? "&" : "?") + "limit=" + size + "&offset=" + from;
+    var res = await fetch(url, { headers: headers() });
+    if (!res.ok) {
+      var body = ""; try { body = await res.text(); } catch(e){}
+      var err = new Error("HTTP " + res.status + " bei " + path.split("?")[0] + ": " + body.slice(0, 200));
+      err.status = res.status; throw err;
+    }
     var page = await res.json();
     out = out.concat(page);
     if (page.length < size) break;
@@ -231,7 +239,12 @@ async function load(){
     if (meId && !me()) { meId = null; save("mate_me", ""); }
     loaded = true; loadError = "";
   } catch (e) {
-    loadError = "Verbindung zur Datenbank fehlgeschlagen. Prüfe URL und Key in der index.html.";
+    var msg = String(e && e.message || e);
+    var hint = "Verbindung zur Datenbank fehlgeschlagen.";
+    if (/PGRST205|42P01|does not exist|Could not find the table/i.test(msg)) hint = "Die Tabellen fehlen noch. Führe die Datei setup.sql im Supabase SQL Editor aus.";
+    else if (/401|403|Invalid API key/i.test(msg)) hint = "Zugriff verweigert. Prüfe den Key in der index.html und ob setup.sql ausgeführt wurde.";
+    else if (/Failed to fetch|NetworkError|Load failed/i.test(msg)) hint = "Keine Verbindung zu Supabase. Prüfe die URL in der index.html (ohne /rest/v1/) und ob das Projekt pausiert ist.";
+    loadError = hint + " (Details: " + msg + ")";
   }
   render();
 }
@@ -313,27 +326,55 @@ async function renamePlayer(){
   try { await api("players?id=eq." + meId, "PATCH", {name:name}); editingName = false; await load(); }
   catch (e) { toast(e.status === 409 ? "Dieser Name ist schon vergeben" : "Umbenennen fehlgeschlagen"); }
 }
+function dayLabel(off){
+  if (off === 0) return "Heute";
+  if (off === 1) return "Gestern";
+  var d = new Date(); d.setDate(d.getDate() - off);
+  return d.toLocaleDateString("de-CH", {weekday:"short", day:"2-digit", month:"2-digit"}).replace(",", "");
+}
+function whenLabel(t){
+  var dt = new Date(t), diff = Math.round((startOfDay(Date.now()).getTime() - startOfDay(t).getTime()) / DAY_MS);
+  var time = dt.toLocaleTimeString("de-CH", {hour:"2-digit", minute:"2-digit"});
+  if (diff === 0) return "heute " + time;
+  if (diff === 1) return "gestern";
+  return dt.toLocaleDateString("de-CH", {weekday:"short", day:"2-digit", month:"2-digit"}).replace(",", "");
+}
+function saveUndo(){ save("mate_undo", JSON.stringify(undoStack.slice(-30))); }
+function undoTarget(){
+  var list = (drinksBy[meId] || []).filter(function(d){ return d.id !== "tmp"; });
+  if (!list.length) return null;
+  for (var i = undoStack.length - 1; i >= 0; i--){
+    for (var j = 0; j < list.length; j++) if (list[j].id === undoStack[i]) return list[j];
+  }
+  return list.slice().sort(function(a,b){ return b.t - a.t; })[0];
+}
 async function addDrink(){
   if (!meId || !selectedBrand || busy) return;
   var t = Date.now();
-  if (dayMode === "yesterday"){ var y = startOfDay(t); y.setDate(y.getDate()-1); y.setHours(12,0,0,0); t = y.getTime(); }
-  var b = brandById(selectedBrand);
+  if (dayOffset > 0){ var y = startOfDay(t); y.setDate(y.getDate() - dayOffset); y.setHours(12,0,0,0); t = y.getTime(); }
+  var b = brandById(selectedBrand), label = dayLabel(dayOffset);
   busy = true;
-  var tmp = {id:"tmp", t:t, b:selectedBrand};
-  (drinksBy[meId] = drinksBy[meId] || []).push(tmp);
-  dayMode = "today"; render();
+  (drinksBy[meId] = drinksBy[meId] || []).push({id:"tmp", t:t, b:selectedBrand});
+  render();
   try {
-    await api("drinks", "POST", {player_id:meId, brand_id:selectedBrand, ts:new Date(t).toISOString()});
-    toast("🧉 +1 " + b.name);
+    var r = await api("drinks", "POST", {player_id:meId, brand_id:selectedBrand, ts:new Date(t).toISOString()}, "return=representation");
+    if (r && r[0] && r[0].id){ undoStack.push(r[0].id); saveUndo(); }
+    toast("🧉 +1 " + b.name + (dayOffset > 0 ? " (" + label + ")" : ""));
+    dayOffset = 0;
   } catch (e) { toast("Eintrag fehlgeschlagen – bitte nochmal versuchen"); }
   busy = false; await load();
 }
 async function removeDrink(id){
   if (id === "tmp" || busy) return;
   busy = true;
-  try { await api("drinks?id=eq." + id, "DELETE"); } catch (e) { toast("Löschen fehlgeschlagen"); }
+  try {
+    await api("drinks?id=eq." + id, "DELETE");
+    undoStack = undoStack.filter(function(x){ return x !== id; }); saveUndo();
+    toast("Eintrag gelöscht");
+  } catch (e) { toast("Löschen fehlgeschlagen"); }
   busy = false; await load();
 }
+async function undoLast(){ var d = undoTarget(); if (d) await removeDrink(d.id); }
 async function createBrand(){
   var name = brandNameDraft.trim().slice(0, 24);
   if (!name) return toast("Bitte einen Markennamen eingeben");
@@ -428,9 +469,11 @@ function meCard(){
     h("input", {type:"color", value:brandColorDraft, oninput:function(e){ brandColorDraft = e.target.value; }}),
     h("button", {class:"btn sm", onclick:createBrand}, "Speichern")) : null;
 
-  var seg = h("div", {class:"seg"},
-    h("button", {class:dayMode === "today" ? "on" : "", onclick:function(){ dayMode = "today"; render(); }}, "Heute"),
-    h("button", {class:dayMode === "yesterday" ? "on" : "", onclick:function(){ dayMode = "yesterday"; render(); }}, "Gestern (nachtragen)"));
+  var dayBtns = [];
+  for (var o = 0; o <= 7; o++) (function(o){
+    dayBtns.push(h("button", {class:dayOffset === o ? "on" : "", onclick:function(){ dayOffset = o; render(); }}, dayLabel(o)));
+  })(o);
+  var seg = h("div", null, h("div", {class:"muted small", style:"margin-bottom:6px"}, "Für welchen Tag? (bis zu 7 Tage zurück)"), h("div", {class:"days"}, dayBtns));
 
   var b = selectedBrand ? brandById(selectedBrand) : null;
   return h("div", {class:"card"}, title, stats4, hint,
@@ -438,7 +481,12 @@ function meCard(){
     h("div", {class:"chips"}, chips), brandForm,
     h("div", {class:"row", style:"margin:6px 0 12px"}, seg),
     h("button", {class:"btn primary", disabled:!b || busy, onclick:addDrink},
-      b ? "＋ 1× " + b.name + (dayMode === "yesterday" ? " (gestern)" : "") : "Marke wählen"));
+      b ? "＋ 1× " + b.name + (dayOffset > 0 ? " (" + dayLabel(dayOffset) + ")" : "") : "Marke wählen"),
+    (function(){
+      var u = undoTarget();
+      return h("button", {class:"btn undo", disabled:!u || busy, onclick:undoLast},
+        u ? "↩ Rückgängig: " + brandById(u.b).name + " (" + whenLabel(u.t) + ")" : "↩ Nichts zum Rückgängigmachen");
+    })());
 }
 
 function tabsEl(){
@@ -505,7 +553,8 @@ function brandsCard(){
 
   var wrap = h("div", null, h("div", {class:"card"}, h("h2", null, "Beliebteste Marken (alle zusammen)"), brandRows));
   if (me()){
-    var last = (drinksBy[meId] || []).slice().sort(function(a,b){ return b.t - a.t; }).slice(0, 12);
+    var cutoff = startOfDay(Date.now()).getTime() - 7*DAY_MS;
+    var last = (drinksBy[meId] || []).filter(function(d){ return d.t >= cutoff; }).sort(function(a,b){ return b.t - a.t; }).slice(0, 60);
     var rows = last.length ? last.map(function(d){
       var b = brandById(d.b), dt = new Date(d.t);
       var when = dt.toLocaleDateString("de-CH", {weekday:"short", day:"2-digit", month:"2-digit"}) + " " + dt.toLocaleTimeString("de-CH", {hour:"2-digit", minute:"2-digit"});
@@ -513,8 +562,8 @@ function brandsCard(){
         h("span", {class:"when"}, when),
         h("button", {class:"x", title:"Eintrag löschen", onclick:function(){ removeDrink(d.id); }}, "×"));
     }) : [h("div", {class:"empty"}, "Noch keine Einträge.")];
-    wrap.appendChild(h("div", {class:"card"}, h("h2", null, "Meine letzten Einträge"), h("div", {class:"hist"}, rows),
-      h("p", {class:"muted small", style:"margin:10px 0 0"}, "Falsch getippt? Mit × löschst du einen Eintrag wieder.")));
+    wrap.appendChild(h("div", {class:"card"}, h("h2", null, "Meine Einträge (letzte 7 Tage)"), h("div", {class:"hist"}, rows),
+      h("p", {class:"muted small", style:"margin:10px 0 0"}, "Zu viel getippt? Mit × löschst du einen Eintrag, oder nutze «Rückgängig» ganz oben.")));
   }
   return wrap;
 }
