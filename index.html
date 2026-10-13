@@ -1,0 +1,534 @@
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#2f8a3f">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="Mate Counter">
+<title>Mate Counter</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ctext y='.9em' font-size='90'%3E%F0%9F%A7%89%3C/text%3E%3C/svg%3E">
+<style>
+:root{
+  --bg:#f5f6f1; --card:#ffffff; --text:#1b2118; --muted:#667060; --line:#e2e6da;
+  --accent:#2f8a3f; --accent-soft:#e4f2e3; --accent-ink:#ffffff;
+  --warn:#d9822b; --up:#23903f; --down:#d4443b; --flat:#8a9284;
+  box-sizing:border-box;
+  padding-top:env(safe-area-inset-top,0px);
+  padding-bottom:env(safe-area-inset-bottom,0px);
+}
+@media (prefers-color-scheme: dark){
+  :root{
+    --bg:#11140f; --card:#1a1f17; --text:#eef2e9; --muted:#9aa393; --line:#2b3326;
+    --accent:#5cc16c; --accent-soft:#1f3322; --accent-ink:#0d150d;
+    --warn:#f0a050; --up:#5cc16c; --down:#ef6f66; --flat:#7d8677;
+  }
+}
+html{scroll-padding-top:env(safe-area-inset-top,0px)}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--text);font-family:system-ui,-apple-system,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;line-height:1.4;-webkit-text-size-adjust:100%}
+.wrap{max-width:760px;margin:0 auto;padding:16px 14px 48px}
+header{display:flex;align-items:center;gap:10px;margin:6px 0 14px}
+header .logo{font-size:34px}
+header h1{margin:0;font-size:24px;letter-spacing:-.3px}
+header p{margin:0;color:var(--muted);font-size:13px}
+.card{background:var(--card);border:1px solid var(--line);border-radius:16px;padding:16px;margin-bottom:14px}
+.card h2{margin:0 0 10px;font-size:16px}
+.muted{color:var(--muted)}
+.small{font-size:12.5px}
+.banner{border-radius:12px;padding:10px 12px;margin-bottom:14px;font-size:14px;background:var(--accent-soft);border:1px solid var(--line)}
+.banner.warn{background:color-mix(in srgb,var(--warn) 15%,var(--card));}
+button{font:inherit;cursor:pointer}
+.btn{border:1px solid var(--line);background:var(--card);color:var(--text);border-radius:12px;padding:9px 14px;font-weight:600}
+.btn:hover{border-color:var(--accent)}
+.btn.primary{background:var(--accent);color:var(--accent-ink);border-color:var(--accent);font-size:17px;padding:14px 16px;width:100%;border-radius:14px}
+.btn.primary:disabled{opacity:.5;cursor:not-allowed}
+.btn.ghost{background:transparent}
+.btn.sm{padding:5px 10px;font-size:13px;border-radius:9px}
+input[type=text]{font:inherit;font-size:16px;color:var(--text);background:var(--bg);border:1px solid var(--line);border-radius:10px;padding:10px 12px;min-width:0}
+input[type=text]:focus{outline:2px solid var(--accent);outline-offset:0}
+input[type=color]{width:42px;height:40px;border:1px solid var(--line);border-radius:10px;padding:2px;background:var(--bg)}
+.row{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+.row.grow>input{flex:1}
+.stats{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin:12px 0}
+.stat{background:var(--bg);border:1px solid var(--line);border-radius:12px;padding:10px 6px;text-align:center}
+.stat b{display:block;font-size:22px;line-height:1.1}
+.stat span{font-size:11.5px;color:var(--muted)}
+.chips{display:flex;flex-wrap:wrap;gap:8px;margin:10px 0}
+.chip{display:inline-flex;align-items:center;gap:7px;border:2px solid var(--line);background:var(--bg);color:var(--text);border-radius:999px;padding:7px 13px;font-weight:600;font-size:14px}
+.chip i{width:12px;height:12px;border-radius:50%;display:inline-block}
+.chip.sel{border-color:var(--c);background:color-mix(in srgb,var(--c) 14%,var(--card))}
+.seg{display:inline-flex;border:1px solid var(--line);border-radius:10px;overflow:hidden}
+.seg button{border:0;background:transparent;color:var(--muted);padding:6px 12px;font-weight:600;font-size:13px}
+.seg button.on{background:var(--accent);color:var(--accent-ink)}
+.tabs{display:flex;gap:6px;margin-bottom:12px;overflow-x:auto}
+.tabs button{border:1px solid var(--line);background:var(--card);color:var(--muted);border-radius:999px;padding:8px 15px;font-weight:600;white-space:nowrap}
+.tabs button.on{background:var(--text);color:var(--bg);border-color:var(--text)}
+.lb{display:flex;flex-direction:column;gap:8px}
+.lbrow{display:grid;grid-template-columns:34px 1fr auto;gap:10px;align-items:center;padding:10px 12px;border:1px solid var(--line);border-radius:14px;background:var(--bg)}
+.lbrow.me{border-color:var(--accent);background:var(--accent-soft)}
+.rank{font-size:20px;text-align:center}
+.pname{font-weight:700;font-size:16px;overflow-wrap:anywhere}
+.pmeta{display:flex;flex-wrap:wrap;gap:4px 12px;font-size:12.5px;color:var(--muted);margin-top:2px}
+.ptotal{font-size:26px;font-weight:800;text-align:right;line-height:1}
+.ptotal small{display:block;font-size:11px;font-weight:500;color:var(--muted)}
+.trend{font-weight:700}
+.trend.up{color:var(--up)} .trend.down{color:var(--down)} .trend.flat{color:var(--flat)}
+.tbl-wrap{overflow-x:auto;max-width:100%}
+table{border-collapse:collapse;width:100%;font-size:14px}
+th,td{padding:8px 6px;text-align:center;border-bottom:1px solid var(--line);white-space:nowrap}
+th:first-child,td:first-child{text-align:left;position:sticky;left:0;background:var(--card)}
+th.today{color:var(--accent)}
+td.cell{font-weight:700}
+td.cell.l0{color:var(--muted);font-weight:400}
+td.cell.l1{background:color-mix(in srgb,var(--accent) 18%,transparent)}
+td.cell.l2{background:color-mix(in srgb,var(--accent) 36%,transparent)}
+td.cell.l3{background:color-mix(in srgb,var(--accent) 56%,transparent)}
+td.cell.future{opacity:.35}
+.bar{height:10px;border-radius:6px;background:var(--line);overflow:hidden;margin-top:4px}
+.bar>div{height:100%}
+.brandrow{margin-bottom:10px}
+.brandrow .top{display:flex;justify-content:space-between;font-size:14px;font-weight:600}
+.hist{display:flex;flex-direction:column;gap:6px}
+.hrow{display:flex;align-items:center;gap:10px;font-size:14px;padding:6px 0;border-bottom:1px solid var(--line)}
+.hrow .dot{width:12px;height:12px;border-radius:50%}
+.hrow span.when{margin-left:auto;color:var(--muted);font-size:12.5px}
+.x{border:0;background:transparent;color:var(--muted);font-size:20px;padding:0 6px}
+.x:hover{color:var(--down)}
+.empty{text-align:center;color:var(--muted);padding:18px 6px}
+.pick{display:flex;flex-wrap:wrap;gap:8px;margin:8px 0 14px}
+.toast{position:fixed;left:50%;transform:translateX(-50%);bottom:calc(18px + env(safe-area-inset-bottom,0px));background:var(--text);color:var(--bg);padding:10px 16px;border-radius:12px;font-size:14px;z-index:9;max-width:90vw}
+code{background:var(--bg);border:1px solid var(--line);border-radius:6px;padding:1px 5px}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <div class="logo">🧉</div>
+    <div>
+      <h1>Mate Counter</h1>
+      <p>Wer trinkt am meisten? Rangliste, Streaks &amp; Trends</p>
+    </div>
+  </header>
+  <div id="app"><div class="empty">Lädt …</div></div>
+</div>
+
+<script>
+// =====================================================================
+//  EINSTELLUNGEN: hier trägst du die zwei Werte aus Supabase ein
+//  (Project Settings → API). Der Key ist der "anon" bzw. "publishable" Key.
+// =====================================================================
+var SUPABASE_URL = "https://csacelsehegzgprytxgt.supabase.co/rest/v1/";   // z. B. https://abcdxyz.supabase.co
+var SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImNzYWNlbHNlaGVnemdwcnl0eGd0Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTE4ODYyNTAsImV4cCI6MjEwNzQ2MjI1MH0.KPrLl4H9t2_eIEB-pRQ9tKnv7vW9t621EQGe_NPGdZI";      // langer Schlüssel
+// =====================================================================
+
+(function(){
+"use strict";
+
+var DAYS = ["Mo","Di","Mi","Do","Fr","Sa","So"];
+var DAY_MS = 86400000;
+var POLL_MS = 20000;
+
+// ---------- Zustand ----------
+var players = [];            // [{id,name}]
+var brands = [];             // [{id,name,color}]
+var drinksBy = {};           // playerId -> [{id,t,b}]
+var meId = null;
+var selectedBrand = null;
+var dayMode = "today";
+var tab = "board";
+var editingName = false, addingBrand = false, switching = false;
+var nameDraft = "", newPlayerDraft = "", brandNameDraft = "", brandColorDraft = "#8b5cf6";
+var loaded = false, loadError = "", busy = false, pendingRender = false;
+var toastTimer = null;
+
+try { meId = localStorage.getItem("mate_me"); selectedBrand = localStorage.getItem("mate_brand"); } catch(e){}
+
+var app = document.getElementById("app");
+var configured = SUPABASE_URL.indexOf("http") === 0 && SUPABASE_KEY.length > 20 && SUPABASE_KEY.indexOf("HIER_") !== 0;
+
+// ---------- Helpers ----------
+function h(tag, attrs){
+  var el = document.createElement(tag);
+  if (attrs) for (var k in attrs){
+    var v = attrs[k];
+    if (v === null || v === undefined || v === false) continue;
+    if (k === "class") el.className = v;
+    else if (k === "style") el.setAttribute("style", v);
+    else if (k.indexOf("on") === 0) el[k] = v;
+    else if (k === "value") el.value = v;
+    else el.setAttribute(k, v === true ? "" : v);
+  }
+  for (var i = 2; i < arguments.length; i++) add(el, arguments[i]);
+  return el;
+}
+function add(el, c){
+  if (c === null || c === undefined || c === false) return;
+  if (Array.isArray(c)) { c.forEach(function(x){ add(el, x); }); return; }
+  el.appendChild(typeof c === "object" ? c : document.createTextNode(String(c)));
+}
+function pad(n){ return n < 10 ? "0"+n : ""+n; }
+function dayKey(d){ if (!(d instanceof Date)) d = new Date(d); return d.getFullYear()+"-"+pad(d.getMonth()+1)+"-"+pad(d.getDate()); }
+function dayNum(key){ var p = key.split("-"); return Math.round(Date.UTC(+p[0], +p[1]-1, +p[2]) / DAY_MS); }
+function startOfDay(d){ d = new Date(d); d.setHours(0,0,0,0); return d; }
+function startOfWeek(d){ d = startOfDay(d); var wd = (d.getDay()+6)%7; d.setDate(d.getDate()-wd); return d; }
+function toast(msg){
+  var old = document.querySelector(".toast"); if (old) old.remove();
+  var t = h("div", {class:"toast"}, msg); document.body.appendChild(t);
+  clearTimeout(toastTimer); toastTimer = setTimeout(function(){ t.remove(); }, 2600);
+}
+function brandById(id){
+  for (var i = 0; i < brands.length; i++) if (brands[i].id === id) return brands[i];
+  return {id:id, name:"Unbekannt", color:"#999999"};
+}
+function me(){ for (var i = 0; i < players.length; i++) if (players[i].id === meId) return players[i]; return null; }
+function save(key, val){ try { localStorage.setItem(key, val); } catch(e){} }
+
+// ---------- Supabase (REST) ----------
+function headers(extra){
+  var hd = {"apikey":SUPABASE_KEY, "Content-Type":"application/json"};
+  if (SUPABASE_KEY.indexOf("eyJ") === 0) hd["Authorization"] = "Bearer " + SUPABASE_KEY;
+  for (var k in (extra || {})) hd[k] = extra[k];
+  return hd;
+}
+async function api(path, method, body, prefer){
+  var res = await fetch(SUPABASE_URL.replace(/\/$/, "") + "/rest/v1/" + path, {
+    method: method || "GET",
+    headers: headers(prefer ? {"Prefer":prefer} : null),
+    body: body ? JSON.stringify(body) : undefined
+  });
+  var text = await res.text();
+  var data = null; try { data = text ? JSON.parse(text) : null; } catch(e){}
+  if (!res.ok) { var err = new Error((data && data.message) || ("HTTP " + res.status)); err.status = res.status; err.data = data; throw err; }
+  return data;
+}
+async function fetchAll(path){
+  var out = [], from = 0, size = 1000;
+  for (;;) {
+    var res = await fetch(SUPABASE_URL.replace(/\/$/, "") + "/rest/v1/" + path, {
+      headers: headers({"Range-Unit":"items", "Range":from + "-" + (from + size - 1)})
+    });
+    if (!res.ok) throw new Error("HTTP " + res.status);
+    var page = await res.json();
+    out = out.concat(page);
+    if (page.length < size) break;
+    from += size;
+  }
+  return out;
+}
+async function load(){
+  try {
+    var r = await Promise.all([
+      fetchAll("players?select=id,name&order=created_at.asc"),
+      fetchAll("brands?select=id,name,color&order=created_at.asc"),
+      fetchAll("drinks?select=id,player_id,brand_id,ts&order=ts.asc")
+    ]);
+    players = r[0]; brands = r[1];
+    var map = {};
+    r[2].forEach(function(d){ (map[d.player_id] = map[d.player_id] || []).push({id:d.id, t:new Date(d.ts).getTime(), b:d.brand_id}); });
+    drinksBy = map;
+    if (!selectedBrand || !brands.some(function(b){ return b.id === selectedBrand; })) selectedBrand = brands.length ? brands[0].id : null;
+    if (meId && !me()) { meId = null; save("mate_me", ""); }
+    loaded = true; loadError = "";
+  } catch (e) {
+    loadError = "Verbindung zur Datenbank fehlgeschlagen. Prüfe URL und Key in der index.html.";
+  }
+  render();
+}
+
+// ---------- Statistik ----------
+function stats(drinks){
+  var now = Date.now();
+  drinks = (drinks || []).slice().sort(function(a,b){ return a.t - b.t; });
+  var total = drinks.length;
+  var todayKey = dayKey(now);
+  var weekStart = startOfWeek(now).getTime();
+  var lastWeekStart = weekStart - 7*DAY_MS;
+  var week = 0, lastWeek = 0, today = 0;
+  var perDay = [0,0,0,0,0,0,0], brandCount = {}, daySet = {};
+  drinks.forEach(function(d){
+    var k = dayKey(d.t); daySet[k] = true;
+    if (k === todayKey) today++;
+    if (d.t >= weekStart){
+      week++;
+      var idx = Math.round((startOfDay(d.t).getTime() - weekStart) / DAY_MS);
+      if (idx >= 0 && idx < 7) perDay[idx]++;
+    } else if (d.t >= lastWeekStart) lastWeek++;
+    brandCount[d.b] = (brandCount[d.b] || 0) + 1;
+  });
+
+  var cur = 0, atRisk = false;
+  var c = startOfDay(now);
+  if (!daySet[dayKey(c)]) { c.setDate(c.getDate()-1); atRisk = true; }
+  while (daySet[dayKey(c)]) { cur++; c.setDate(c.getDate()-1); }
+  if (cur === 0) atRisk = false;
+  var nums = Object.keys(daySet).map(dayNum).sort(function(a,b){ return a-b; });
+  var longest = 0, run = 0;
+  for (var i = 0; i < nums.length; i++){
+    run = (i > 0 && nums[i] === nums[i-1] + 1) ? run + 1 : 1;
+    if (run > longest) longest = run;
+  }
+
+  var wins = [];
+  for (var w = 3; w >= 0; w--){
+    var hi = now - w*7*DAY_MS, lo = hi - 7*DAY_MS, n = 0;
+    drinks.forEach(function(d){ if (d.t > lo && d.t <= hi) n++; });
+    wins.push(n);
+  }
+  var ym = wins.reduce(function(a,b){ return a+b; }, 0) / 4, num = 0, den = 0;
+  wins.forEach(function(y, x){ num += (x-1.5)*(y-ym); den += (x-1.5)*(x-1.5); });
+  var slope = num / den;
+  var isNew = total === 0 || drinks[0].t > now - 7*DAY_MS;
+
+  var top = null;
+  Object.keys(brandCount).forEach(function(b){ if (!top || brandCount[b] > brandCount[top]) top = b; });
+  return {total:total, week:week, lastWeek:lastWeek, today:today, perDay:perDay, streak:cur, longest:longest,
+          atRisk:atRisk, slope:slope, wins:wins, isNew:isNew, brandCount:brandCount, top:top};
+}
+function trendEl(st){
+  if (st.isNew) return h("span", {class:"trend flat"}, "● neu");
+  var s = st.slope, cls = "flat", arrow = "▶";
+  if (s >= 0.3) { cls = "up"; arrow = "▲"; } else if (s <= -0.3) { cls = "down"; arrow = "▼"; }
+  var txt = (s > 0 ? "+" : "") + s.toFixed(1).replace(".", ",") + "/Wo";
+  return h("span", {class:"trend " + cls}, arrow + " " + txt);
+}
+
+// ---------- Aktionen ----------
+function chooseMe(id){ meId = id; save("mate_me", id); switching = false; render(); }
+async function createPlayer(){
+  var name = newPlayerDraft.trim().slice(0, 24);
+  if (!name) return toast("Bitte einen Namen eingeben");
+  if (busy) return; busy = true;
+  try {
+    var r = await api("players", "POST", {name:name}, "return=representation");
+    newPlayerDraft = ""; meId = r[0].id; save("mate_me", meId); switching = false;
+    await load();
+  } catch (e) {
+    toast(e.status === 409 ? "Diesen Namen gibt es schon – wähle ihn oben aus" : "Konnte nicht speichern");
+  } finally { busy = false; render(); }
+}
+async function renamePlayer(){
+  var name = (nameDraft || "").trim().slice(0, 24);
+  if (!name) return;
+  try { await api("players?id=eq." + meId, "PATCH", {name:name}); editingName = false; await load(); }
+  catch (e) { toast(e.status === 409 ? "Dieser Name ist schon vergeben" : "Umbenennen fehlgeschlagen"); }
+}
+async function addDrink(){
+  if (!meId || !selectedBrand || busy) return;
+  var t = Date.now();
+  if (dayMode === "yesterday"){ var y = startOfDay(t); y.setDate(y.getDate()-1); y.setHours(12,0,0,0); t = y.getTime(); }
+  var b = brandById(selectedBrand);
+  busy = true;
+  var tmp = {id:"tmp", t:t, b:selectedBrand};
+  (drinksBy[meId] = drinksBy[meId] || []).push(tmp);
+  dayMode = "today"; render();
+  try {
+    await api("drinks", "POST", {player_id:meId, brand_id:selectedBrand, ts:new Date(t).toISOString()});
+    toast("🧉 +1 " + b.name);
+  } catch (e) { toast("Eintrag fehlgeschlagen – bitte nochmal versuchen"); }
+  busy = false; await load();
+}
+async function removeDrink(id){
+  if (id === "tmp" || busy) return;
+  busy = true;
+  try { await api("drinks?id=eq." + id, "DELETE"); } catch (e) { toast("Löschen fehlgeschlagen"); }
+  busy = false; await load();
+}
+async function createBrand(){
+  var name = brandNameDraft.trim().slice(0, 24);
+  if (!name) return toast("Bitte einen Markennamen eingeben");
+  try {
+    var r = await api("brands", "POST", {name:name, color:brandColorDraft}, "return=representation");
+    selectedBrand = r[0].id; save("mate_brand", selectedBrand);
+    brandNameDraft = ""; addingBrand = false; toast("Marke hinzugefügt"); await load();
+  } catch (e) { toast(e.status === 409 ? "Diese Marke gibt es schon" : "Marke konnte nicht gespeichert werden"); }
+}
+
+// ---------- Rendering ----------
+function render(){
+  var ae = document.activeElement;
+  if (ae && ae.tagName === "INPUT" && app.contains(ae)) { pendingRender = true; return; }
+  pendingRender = false;
+  var f = document.createDocumentFragment();
+
+  if (!configured) {
+    f.appendChild(h("div", {class:"card"}, h("h2", null, "Fast fertig"),
+      h("p", null, "Trage oben in der Datei ", h("code", null, "index.html"), " die Werte ", h("code", null, "SUPABASE_URL"), " und ", h("code", null, "SUPABASE_KEY"), " ein (Anleitung im Chat)."))); 
+  } else if (loadError && !loaded) {
+    f.appendChild(h("div", {class:"banner warn"}, loadError));
+  } else if (!loaded) {
+    f.appendChild(h("div", {class:"empty"}, "Lädt …"));
+  } else {
+    if (loadError) f.appendChild(h("div", {class:"banner warn"}, loadError));
+    if (!me() || switching) f.appendChild(identityCard());
+    if (me() && !switching) f.appendChild(meCard());
+    f.appendChild(tabsEl());
+    if (tab === "board") f.appendChild(boardCard());
+    if (tab === "week") f.appendChild(weekCard());
+    if (tab === "brands") f.appendChild(brandsCard());
+  }
+  app.replaceChildren(f);
+}
+
+function identityCard(){
+  var pick = players.map(function(p){
+    return h("button", {class:"btn", onclick:function(){ chooseMe(p.id); }}, p.name);
+  });
+  return h("div", {class:"card"},
+    h("h2", null, "Wer bist du?"),
+    players.length ? h("div", null, h("div", {class:"muted small"}, "Tippe auf deinen Namen:"), h("div", {class:"pick"}, pick)) : null,
+    h("div", {class:"muted small"}, players.length ? "Noch nicht dabei? Neuen Namen anlegen:" : "Du bist die/der Erste! Wähle einen Namen:"),
+    h("div", {class:"row grow", style:"margin-top:8px"},
+      h("input", {type:"text", placeholder:"Dein Name", maxlength:"24", value:newPlayerDraft,
+        oninput:function(e){ newPlayerDraft = e.target.value; },
+        onkeydown:function(e){ if (e.key === "Enter") createPlayer(); }}),
+      h("button", {class:"btn", onclick:createPlayer}, "Beitreten")),
+    switching && me() ? h("div", {style:"margin-top:10px"}, h("button", {class:"btn sm ghost", onclick:function(){ switching = false; render(); }}, "Abbrechen")) : null);
+}
+
+function meCard(){
+  var p = me(), st = stats(drinksBy[p.id]);
+  var title;
+  if (editingName){
+    title = h("div", {class:"row grow"},
+      h("input", {type:"text", value:nameDraft || p.name, maxlength:"24",
+        oninput:function(e){ nameDraft = e.target.value; },
+        onkeydown:function(e){ if (e.key === "Enter") renamePlayer(); }}),
+      h("button", {class:"btn sm", onclick:renamePlayer}, "OK"),
+      h("button", {class:"btn sm ghost", onclick:function(){ editingName = false; render(); }}, "Abbrechen"));
+  } else {
+    title = h("div", {class:"row", style:"justify-content:space-between"},
+      h("h2", {style:"margin:0;font-size:18px"}, "Hallo, " + p.name + " 🧉"),
+      h("div", {class:"row"},
+        h("button", {class:"btn sm ghost", onclick:function(){ editingName = true; nameDraft = p.name; render(); }}, "Umbenennen"),
+        h("button", {class:"btn sm ghost", onclick:function(){ switching = true; render(); }}, "Wechseln")));
+  }
+
+  var stats4 = h("div", {class:"stats"},
+    h("div", {class:"stat"}, h("b", null, st.today), h("span", null, "heute")),
+    h("div", {class:"stat"}, h("b", null, st.week), h("span", null, "diese Woche")),
+    h("div", {class:"stat"}, h("b", null, st.streak > 0 ? "🔥 " + st.streak : "–"), h("span", null, "Streak (Tage)")),
+    h("div", {class:"stat"}, h("b", null, st.total), h("span", null, "insgesamt")));
+
+  var hint = null;
+  if (st.atRisk) hint = h("div", {class:"banner warn", style:"margin:0 0 10px"}, "⚠️ Heute noch kein Mate – trink einen, um deinen " + st.streak + "-Tage-Streak zu halten!");
+  else if (st.longest > st.streak && st.longest > 1) hint = h("div", {class:"muted small", style:"margin:0 0 8px"}, "Dein Rekord-Streak: " + st.longest + " Tage");
+
+  var chips = brands.map(function(b){
+    return h("button", {class:"chip" + (b.id === selectedBrand ? " sel" : ""), style:"--c:" + b.color,
+      onclick:function(){ selectedBrand = b.id; save("mate_brand", b.id); render(); }},
+      h("i", {style:"background:" + b.color}), b.name);
+  });
+  chips.push(h("button", {class:"chip", style:"--c:var(--accent);border-style:dashed", onclick:function(){ addingBrand = !addingBrand; render(); }}, addingBrand ? "✕ Abbrechen" : "＋ Neue Marke"));
+
+  var brandForm = addingBrand ? h("div", {class:"row grow", style:"margin:4px 0 10px"},
+    h("input", {type:"text", placeholder:"Name der Marke", maxlength:"24", value:brandNameDraft,
+      oninput:function(e){ brandNameDraft = e.target.value; },
+      onkeydown:function(e){ if (e.key === "Enter") createBrand(); }}),
+    h("input", {type:"color", value:brandColorDraft, oninput:function(e){ brandColorDraft = e.target.value; }}),
+    h("button", {class:"btn sm", onclick:createBrand}, "Speichern")) : null;
+
+  var seg = h("div", {class:"seg"},
+    h("button", {class:dayMode === "today" ? "on" : "", onclick:function(){ dayMode = "today"; render(); }}, "Heute"),
+    h("button", {class:dayMode === "yesterday" ? "on" : "", onclick:function(){ dayMode = "yesterday"; render(); }}, "Gestern (nachtragen)"));
+
+  var b = selectedBrand ? brandById(selectedBrand) : null;
+  return h("div", {class:"card"}, title, stats4, hint,
+    h("div", {class:"muted small"}, "Welchen Mate hast du getrunken?"),
+    h("div", {class:"chips"}, chips), brandForm,
+    h("div", {class:"row", style:"margin:6px 0 12px"}, seg),
+    h("button", {class:"btn primary", disabled:!b || busy, onclick:addDrink},
+      b ? "＋ 1× " + b.name + (dayMode === "yesterday" ? " (gestern)" : "") : "Marke wählen"));
+}
+
+function tabsEl(){
+  function t(id, label){ return h("button", {class:tab === id ? "on" : "", onclick:function(){ tab = id; render(); }}, label); }
+  return h("div", {class:"tabs"}, t("board","🏆 Rangliste"), t("week","📅 Woche"), t("brands","🥤 Marken & Verlauf"));
+}
+
+function boardCard(){
+  var list = players.map(function(p){ return {p:p, st:stats(drinksBy[p.id])}; });
+  list.sort(function(a,b){ return b.st.total - a.st.total || a.p.name.localeCompare(b.p.name, "de"); });
+  if (!list.length) return h("div", {class:"card"}, h("div", {class:"empty"}, "Noch niemand dabei. Sei der Erste! 🧉"));
+  var medals = ["🥇","🥈","🥉"];
+  var rows = list.map(function(r, i){
+    var top = r.st.top ? brandById(r.st.top) : null;
+    var meta = h("div", {class:"pmeta"},
+      h("span", null, "Woche: ", h("b", {style:"color:var(--text)"}, r.st.week)),
+      h("span", null, r.st.streak > 0 ? "🔥 " + r.st.streak + (r.st.streak === 1 ? " Tag" : " Tage") : "kein Streak"),
+      h("span", null, "Steigung: ", trendEl(r.st)),
+      top ? h("span", null, "Fav: ", h("span", {style:"color:" + top.color + ";font-weight:700"}, top.name)) : null);
+    return h("div", {class:"lbrow" + (r.p.id === meId ? " me" : "")},
+      h("div", {class:"rank"}, i < 3 ? medals[i] : (i+1) + "."),
+      h("div", null, h("div", {class:"pname"}, r.p.name + (r.p.id === meId ? " (du)" : "")), meta),
+      h("div", {class:"ptotal"}, r.st.total, h("small", null, "Mate")));
+  });
+  var totalAll = list.reduce(function(a, r){ return a + r.st.total; }, 0);
+  return h("div", {class:"card"}, h("h2", null, "Rangliste (gesamt)"), h("div", {class:"lb"}, rows),
+    h("p", {class:"muted small", style:"margin:12px 0 0"}, "Zusammen: " + totalAll + " Mate. Die Steigung zeigt den Trend der Wochenmenge über die letzten 4 Wochen (Mate pro Woche)."));
+}
+
+function weekCard(){
+  var list = players.map(function(p){ return {p:p, st:stats(drinksBy[p.id])}; });
+  list.sort(function(a,b){ return b.st.week - a.st.week || b.st.total - a.st.total; });
+  if (!list.length) return h("div", {class:"card"}, h("div", {class:"empty"}, "Noch keine Daten."));
+  var todayIdx = (new Date().getDay() + 6) % 7;
+  var head = h("tr", null, h("th", null, "Name"),
+    DAYS.map(function(d, i){ return h("th", {class:i === todayIdx ? "today" : ""}, d); }),
+    h("th", null, "Σ"), h("th", null, "Vorwoche"));
+  var body = list.map(function(r){
+    var diff = r.st.week - r.st.lastWeek;
+    return h("tr", null,
+      h("td", {style:"font-weight:700"}, r.p.name + (r.p.id === meId ? " •" : "")),
+      r.st.perDay.map(function(n, i){
+        var lvl = n === 0 ? "l0" : n === 1 ? "l1" : n === 2 ? "l2" : "l3";
+        return h("td", {class:"cell " + lvl + (i > todayIdx ? " future" : "")}, n === 0 ? "·" : n);
+      }),
+      h("td", {style:"font-weight:800"}, r.st.week),
+      h("td", {class:"muted"}, r.st.lastWeek + (diff !== 0 ? "  (" + (diff > 0 ? "+" : "") + diff + ")" : "")));
+  });
+  return h("div", {class:"card"}, h("h2", null, "Wochenstatus (Mo–So)"),
+    h("div", {class:"tbl-wrap"}, h("table", null, h("thead", null, head), h("tbody", null, body))),
+    h("p", {class:"muted small", style:"margin:12px 0 0"}, "Die Woche startet am Montag. In Klammern: Veränderung zur Vorwoche."));
+}
+
+function brandsCard(){
+  var totals = {}, sum = 0;
+  Object.keys(drinksBy).forEach(function(pid){ drinksBy[pid].forEach(function(d){ totals[d.b] = (totals[d.b] || 0) + 1; sum++; }); });
+  var ids = Object.keys(totals).sort(function(a,b){ return totals[b] - totals[a]; });
+  var brandRows = ids.length ? ids.map(function(id){
+    var b = brandById(id), pct = Math.round(totals[id] / sum * 100);
+    return h("div", {class:"brandrow"},
+      h("div", {class:"top"}, h("span", null, b.name), h("span", null, totals[id] + " · " + pct + "%")),
+      h("div", {class:"bar"}, h("div", {style:"width:" + pct + "%;background:" + b.color})));
+  }) : [h("div", {class:"empty"}, "Noch keine Mate getrunken.")];
+
+  var wrap = h("div", null, h("div", {class:"card"}, h("h2", null, "Beliebteste Marken (alle zusammen)"), brandRows));
+  if (me()){
+    var last = (drinksBy[meId] || []).slice().sort(function(a,b){ return b.t - a.t; }).slice(0, 12);
+    var rows = last.length ? last.map(function(d){
+      var b = brandById(d.b), dt = new Date(d.t);
+      var when = dt.toLocaleDateString("de-CH", {weekday:"short", day:"2-digit", month:"2-digit"}) + " " + dt.toLocaleTimeString("de-CH", {hour:"2-digit", minute:"2-digit"});
+      return h("div", {class:"hrow"}, h("span", {class:"dot", style:"background:" + b.color}), h("span", null, b.name),
+        h("span", {class:"when"}, when),
+        h("button", {class:"x", title:"Eintrag löschen", onclick:function(){ removeDrink(d.id); }}, "×"));
+    }) : [h("div", {class:"empty"}, "Noch keine Einträge.")];
+    wrap.appendChild(h("div", {class:"card"}, h("h2", null, "Meine letzten Einträge"), h("div", {class:"hist"}, rows),
+      h("p", {class:"muted small", style:"margin:10px 0 0"}, "Falsch getippt? Mit × löschst du einen Eintrag wieder.")));
+  }
+  return wrap;
+}
+
+app.addEventListener("focusout", function(){ setTimeout(function(){ if (pendingRender) render(); }, 60); });
+
+// ---------- Start ----------
+render();
+if (configured) {
+  load();
+  setInterval(function(){ if (!busy) load(); }, POLL_MS);
+  document.addEventListener("visibilitychange", function(){ if (!document.hidden && !busy) load(); });
+}
+})();
+</script>
+</body>
+</html>
