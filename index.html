@@ -65,6 +65,13 @@ input[type=color]{width:42px;height:40px;border:1px solid var(--line);border-rad
 .days button{border:1px solid var(--line);background:var(--bg);color:var(--muted);border-radius:10px;padding:6px 10px;font-weight:600;font-size:13px}
 .days button.on{background:var(--accent);color:var(--accent-ink);border-color:var(--accent)}
 .undo{width:100%;margin-top:8px;text-align:center}
+.bolivar-task{margin:12px 0;padding:13px 14px;border:1px solid var(--line);border-radius:13px;background:var(--bg)}
+.bolivar-task .top{display:flex;align-items:flex-end;justify-content:space-between;gap:10px}
+.bolivar-task .target{font-size:26px;font-weight:850;line-height:1}
+.bolivar-task .target small{display:block;margin-top:5px;font-size:12px;font-weight:600;color:var(--muted)}
+.bolivar-progress{height:10px;margin-top:10px;border-radius:999px;background:var(--line);overflow:hidden}
+.bolivar-progress>div{height:100%;border-radius:999px;background:var(--accent);transition:width .25s ease}
+.bolivar-balance{font-family:var(--display);font-size:18px;font-weight:800;color:var(--warn)}
 .stats.three{grid-template-columns:repeat(3,1fr);margin-top:0}
 .hi{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:8px;margin-bottom:14px}
 .hicard{background:var(--bg);border:1px solid var(--line);border-radius:12px;padding:10px 12px}
@@ -605,6 +612,8 @@ var undoStack = [];
 var tab = "board";
 var editingName = false, addingBrand = false, switching = false;
 var chartHighlightId = null;
+var bolivarRewards = [];
+var bolivarTableAvailable = true;
 var nameDraft = "", newPlayerDraft = "", brandNameDraft = "", brandColorDraft = "#8b5cf6";
 var loaded = false, loadError = "", busy = false, pendingRender = false;
 var toastTimer = null;
@@ -713,6 +722,17 @@ async function load(){
     var map = {};
     r[2].forEach(function(d){ (map[d.player_id] = map[d.player_id] || []).push({id:d.id, t:new Date(d.ts).getTime(), b:d.brand_id}); });
     drinksBy = map;
+    try {
+      bolivarRewards = await fetchAll("mate_bolivar_rewards?select=player_id,reward_date,reward_type,amount&order=reward_date.asc");
+      bolivarTableAvailable = true;
+      for (var pi = 0; pi < players.length; pi++) await reconcileBolivarRewards(players[pi].id);
+      bolivarRewards = await fetchAll("mate_bolivar_rewards?select=player_id,reward_date,reward_type,amount&order=reward_date.asc");
+    } catch (e) {
+      var isMissingBolivarTable = /PGRST205|42P01|does not exist|Could not find the table/i.test(String(e && e.message || e));
+      bolivarTableAvailable = !isMissingBolivarTable;
+      if (isMissingBolivarTable) bolivarRewards = [];
+      else throw e;
+    }
     if (!selectedBrand || !brands.some(function(b){ return b.id === selectedBrand; })) selectedBrand = brands.length ? brands[0].id : null;
     if (meId && !me()) { meId = null; save("mate_me", ""); }
     loaded = true; loadError = "";
@@ -790,6 +810,56 @@ function trendEl(st){
     arrow + " " + (d > 0 ? "+" : "") + d + " ggü. Vorwoche");
 }
 
+function dailyDrinkCounts(drinks){
+  var counts = {};
+  (drinks || []).forEach(function(d){ var key = dayKey(d.t); counts[key] = (counts[key] || 0) + 1; });
+  return counts;
+}
+function previousDayKey(key){
+  var p = key.split("-"), d = new Date(+p[0], +p[1]-1, +p[2]);
+  d.setDate(d.getDate()-1);
+  return dayKey(d);
+}
+function dailyAverageTarget(drinks, targetDate){
+  var counts = dailyDrinkCounts(drinks), targetNum = dayNum(targetDate), total = 0, days = 0;
+  Object.keys(counts).forEach(function(key){
+    if (counts[key] > 0 && dayNum(key) < targetNum){ total += counts[key]; days++; }
+  });
+  return days ? Math.ceil(total / days) : 1;
+}
+function bolivarBalance(playerId){
+  var balance = 0;
+  bolivarRewards.forEach(function(r){ if (r.player_id === playerId) balance += Number(r.amount) || 0; });
+  return balance;
+}
+async function reconcileBolivarRewards(playerId){
+  if (!bolivarTableAvailable) return [];
+  var counts = dailyDrinkCounts(drinksBy[playerId] || []), today = dayKey(Date.now()), desired = {}, newest = [];
+  Object.keys(counts).sort().forEach(function(key){
+    if (counts[key] > 0 && key <= today){
+      var target = dailyAverageTarget(drinksBy[playerId] || [], key);
+      if (counts[key] >= target) desired[key + ":target"] = {player_id:playerId, reward_date:key, reward_type:"target", amount:100};
+      if (counts[previousDayKey(key)] || 0) desired[key + ":streak"] = {player_id:playerId, reward_date:key, reward_type:"streak", amount:50};
+    }
+  });
+  var existing = {};
+  bolivarRewards.forEach(function(r){
+    if (r.player_id === playerId) existing[r.reward_date + ":" + r.reward_type] = r;
+  });
+  for (var key in existing){
+    if (!desired[key]){
+      await api("mate_bolivar_rewards?player_id=eq." + encodeURIComponent(playerId) + "&reward_date=eq." + encodeURIComponent(existing[key].reward_date) + "&reward_type=eq." + encodeURIComponent(existing[key].reward_type), "DELETE");
+    }
+  }
+  for (var desiredKey in desired){
+    if (!existing[desiredKey]){
+      await api("mate_bolivar_rewards", "POST", desired[desiredKey], "resolution=merge-duplicates");
+      newest.push(desired[desiredKey]);
+    }
+  }
+  return newest;
+}
+
 // ---------- Aktionen ----------
 function chooseMe(id){ meId = id; save("mate_me", id); switching = false; render(); }
 async function createPlayer(){
@@ -846,7 +916,11 @@ async function addDrink(){
     toast("Mate +1 " + b.name + (dayOffset > 0 ? " (" + label + ")" : ""));
     dayOffset = 0;
   } catch (e) { toast("Eintrag fehlgeschlagen – bitte nochmal versuchen"); }
-  busy = false; await load();
+  busy = false;
+  var beforeBalance = bolivarBalance(meId);
+  await load();
+  var earned = bolivarBalance(meId) - beforeBalance;
+  if (earned > 0) toast("+" + earned + " Mate-Bolivar");
 }
 async function removeDrink(id){
   if (id === "tmp" || busy) return;
@@ -948,6 +1022,21 @@ function meCard(){
   if (st.atRisk) hint = h("div", {class:"banner warn", style:"margin:0 0 10px"}, "⚠️ Heute noch kein Mate – trink einen, um deinen " + st.streak + "-Tage-Streak zu halten!");
   else if (st.longest > st.streak && st.longest > 1) hint = h("div", {class:"muted small", style:"margin:0 0 8px"}, "Dein Rekord-Streak: " + st.longest + " Tage");
 
+  var todayKey = dayKey(Date.now());
+  var todayTarget = dailyAverageTarget(drinksBy[p.id] || [], todayKey);
+  var remaining = Math.max(0, todayTarget - st.today);
+  var progress = Math.min(100, st.today / todayTarget * 100);
+  var bolivarTask = h("div", {class:"bolivar-task"},
+    h("div", {class:"top"},
+      h("div", {class:"target"}, remaining === 0 ? "Ziel erreicht" : remaining + " Mate", h("small", null, remaining === 0 ? "Heute: " + st.today + " / " + todayTarget : "Heute: " + st.today + " / " + todayTarget)),
+      h("div", {class:"bolivar-balance"}, bolivarBalance(p.id) + " MB")),
+    h("div", {class:"bolivar-progress", role:"progressbar", "aria-label":"Tagesdurchschnitts-Ziel", "aria-valuemin":"0", "aria-valuemax":String(todayTarget), "aria-valuenow":String(Math.min(st.today, todayTarget))},
+      h("div", {style:"width:" + progress + "%"})),
+    h("div", {class:"muted small", style:"margin-top:8px"},
+      remaining === 0 ? "Du erhältst heute 100 Mate-Bolivar für dein Durchschnittsziel." : "Durchschnitt aus deinen vorherigen Mate-Tagen: " + todayTarget + ".",
+      h("div", null, "Streak halten bringt heute zusätzlich 50 Mate-Bolivar.")));
+  if (!bolivarTableAvailable) bolivarTask.appendChild(h("div", {class:"banner warn", style:"margin:10px 0 0"}, "Mate-Bolivar benötigt die neue Tabelle mate_bolivar_rewards."));
+
   var chips = brands.map(function(b){
     return h("button", {class:"chip" + (b.id === selectedBrand ? " sel" : ""), style:"--c:" + b.color,
       "aria-pressed":String(b.id === selectedBrand),
@@ -977,7 +1066,7 @@ function meCard(){
     h("div", {class:"days", role:"group", "aria-labelledby":"day-entry-label"}, dayBtns));
 
   var b = selectedBrand ? brandById(selectedBrand) : null;
-  return h("div", {class:"card"}, title, hint,
+  return h("div", {class:"card"}, title, hint, bolivarTask,
     h("div", {class:"muted small"}, "Welchen Mate hast du getrunken?"),
     h("div", {class:"chips"}, chips), brandForm,
     h("div", {class:"row", style:"margin:6px 0 12px"}, seg),
