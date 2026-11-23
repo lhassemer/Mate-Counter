@@ -604,6 +604,7 @@ var dayOffset = 0;          // 0 = heute, 1 = gestern, ... bis 7
 var undoStack = [];
 var tab = "board";
 var editingName = false, addingBrand = false, switching = false;
+var chartHighlightId = null;
 var nameDraft = "", newPlayerDraft = "", brandNameDraft = "", brandColorDraft = "#8b5cf6";
 var loaded = false, loadError = "", busy = false, pendingRender = false;
 var toastTimer = null;
@@ -1142,23 +1143,30 @@ function chartFrame(W, H, L, R, T, B, maxV, label){
   }
   return {svg:svg, sc:sc, ih:ih};
 }
-function lineChart(labels, series){
+function lineChart(labels, series, labelStride, chartDescription){
   var W = 640, H = 250, L = 30, R = 14, T = 12, B = 30, iw = W - L - R, maxV = 0;
   series.forEach(function(s){ s.values.forEach(function(v){ if (v > maxV) maxV = v; }); });
-  var description = "Mate pro Kalenderwoche, letzte 12 Wochen. " + series.map(function(s){
+  var description = (chartDescription || "Mate pro Kalenderwoche, letzte 12 Wochen.") + " " + series.map(function(s){
     return s.name + ": " + labels.map(function(label, i){ return label + " " + s.values[i]; }).join(", ");
   }).join(". ");
   var fr = chartFrame(W, H, L, R, T, B, maxV, description), svg = fr.svg;
   function X(i){ return L + iw * (labels.length === 1 ? 0.5 : i / (labels.length - 1)); }
   function Y(v){ return T + fr.ih - fr.ih * v / fr.sc.max; }
+  labelStride = labelStride || 1;
   labels.forEach(function(lb, i){
-    svg.appendChild(svgEl("text", {x:X(i), y:H-9, "text-anchor":"middle", style:"fill:var(--muted);font-size:10px"}, lb));
+    if (i % labelStride === 0 || i === labels.length - 1){
+      svg.appendChild(svgEl("text", {x:X(i), y:H-9, "text-anchor":"middle", style:"fill:var(--muted);font-size:10px"}, lb));
+    }
   });
   series.forEach(function(s){
+    var highlighted = chartHighlightId && s.id === chartHighlightId;
+    var dimmed = chartHighlightId && s.id !== chartHighlightId;
+    var strokeWidth = highlighted ? 4.5 : (s.me ? 3.5 : 2.2);
+    var opacity = dimmed ? 0.14 : 1;
     var d = s.values.map(function(v, i){ return (i ? "L" : "M") + X(i).toFixed(1) + " " + Y(v).toFixed(1); }).join(" ");
-    svg.appendChild(svgEl("path", {d:d, style:"fill:none;stroke:" + s.color + ";stroke-width:" + (s.me ? 3.5 : 2.2) + ";stroke-linejoin:round;stroke-linecap:round"}));
+    svg.appendChild(svgEl("path", {d:d, style:"fill:none;stroke:" + s.color + ";stroke-width:" + strokeWidth + ";stroke-opacity:" + opacity + ";stroke-linejoin:round;stroke-linecap:round"}));
     s.values.forEach(function(v, i){
-      svg.appendChild(svgEl("circle", {cx:X(i), cy:Y(v), r:s.me ? 4 : 3, style:"fill:" + s.color}, svgEl("title", null, s.name + " · " + labels[i] + ": " + v)));
+      svg.appendChild(svgEl("circle", {cx:X(i), cy:Y(v), r:highlighted ? 4.5 : (s.me ? 4 : 3), style:"fill:" + s.color + ";fill-opacity:" + opacity}, svgEl("title", null, s.name + " · " + labels[i] + ": " + v)));
     });
   });
   return svg;
@@ -1186,6 +1194,31 @@ function chartsCard(){
   players.forEach(function(p){ if ((drinksBy[p.id] || []).length) any = true; });
   if (!any) return h("div", {class:"card"}, h("div", {class:"empty"}, "Noch keine Daten für Diagramme. Trink den ersten Mate!"));
 
+  var highlightedPlayer = chartHighlightId ? players.find(function(p){ return p.id === chartHighlightId; }) : null;
+  var picker = h("div", {class:"card"},
+    h("h2", null, "Person hervorheben"),
+    h("div", {class:"chips"},
+      h("button", {
+        class:"chip" + (!chartHighlightId ? " sel" : ""),
+        style: !chartHighlightId ? "border-color:var(--accent);--c:var(--accent)" : "",
+        "aria-pressed":!chartHighlightId ? "true" : "false",
+        onclick:function(){ chartHighlightId = null; render(); }
+      }, "Alle"),
+      players.map(function(p){
+        var selected = chartHighlightId === p.id;
+        return h("button", {
+          class:"chip" + (selected ? " sel" : ""),
+          style:"--c:" + playerColor(p.id),
+          "aria-pressed":selected ? "true" : "false",
+          onclick:function(){ chartHighlightId = selected ? null : p.id; render(); }
+        }, h("i", {style:"background:" + playerColor(p.id)}), p.name);
+      })
+    ),
+    h("p", {class:"muted small", style:"margin:8px 0 0"},
+      highlightedPlayer ? highlightedPlayer.name + " wird hervorgehoben; die übrigen Linien werden gedämpft." : "Alle Personen sind gleich sichtbar."));
+
+  wrap.appendChild(picker);
+
   // 1) Wochenverlauf, letzte 12 Kalenderwochen
   var n = 12, base = startOfWeek(now); base.setDate(base.getDate() - 7 * (n - 1));
   var baseMs = base.getTime(), wl = [];
@@ -1197,14 +1230,33 @@ function chartsCard(){
       var idx = Math.round((startOfWeek(d.t).getTime() - baseMs) / (7 * DAY_MS));
       if (idx >= 0 && idx < n) vals[idx]++;
     });
-    if (vals.some(function(v){ return v > 0; })) series.push({name:p.name, color:playerColor(p.id), values:vals, me:p.id === meId});
+    if (vals.some(function(v){ return v > 0; })) series.push({id:p.id, name:p.name, color:playerColor(p.id), values:vals, me:p.id === meId});
   });
   wrap.appendChild(h("div", {class:"card"}, h("h2", null, "Mate pro Woche (letzte 12 Wochen)"),
     series.length ? lineChart(wl, series) : h("div", {class:"empty"}, "In den letzten 12 Wochen wurde nichts getrunken."),
     series.length ? legend(series) : null,
     h("p", {class:"muted small", style:"margin:8px 0 0"}, "Die aktuelle Woche ist noch nicht abgeschlossen. Deine Linie ist dicker.")));
 
-  // 2) Alle zusammen pro Tag, letzte 14 Tage
+  // 2) Gesamter Verlauf, kumuliert über dieselben letzten 12 Wochen
+  var totalSeries = [];
+  players.forEach(function(p){
+    var weekly = []; for (var tk = 0; tk < n; tk++) weekly.push(0);
+    (drinksBy[p.id] || []).forEach(function(d){
+      var idx = Math.round((startOfWeek(d.t).getTime() - baseMs) / (7 * DAY_MS));
+      if (idx >= 0 && idx < n) weekly[idx]++;
+    });
+    var running = 0;
+    var cumulative = weekly.map(function(v){ running += v; return running; });
+    if (cumulative.some(function(v){ return v > 0; })) totalSeries.push({
+      id:p.id, name:p.name, color:playerColor(p.id), values:cumulative, me:p.id === meId
+    });
+  });
+  wrap.appendChild(h("div", {class:"card"}, h("h2", null, "Gesamtverlauf (kumuliert, letzte 12 Wochen)"),
+    totalSeries.length ? lineChart(wl, totalSeries, 1, "Kumulierte Anzahl der Mates in den letzten 12 Kalenderwochen.") : h("div", {class:"empty"}, "In den letzten 12 Wochen wurde nichts getrunken."),
+    totalSeries.length ? legend(totalSeries) : null,
+    h("p", {class:"muted small", style:"margin:8px 0 0"}, "Kumulierte Anzahl der Mates innerhalb desselben 12-Wochen-Zeitraums wie der Wochenverlauf.")));
+
+  // 3) Alle zusammen pro Tag, letzte 14 Tage
   var dl = [], dv = [], dayTotals = {};
   Object.keys(drinksBy).forEach(function(pid){ drinksBy[pid].forEach(function(d){ var k = dayKey(d.t); dayTotals[k] = (dayTotals[k] || 0) + 1; }); });
   for (var o = 13; o >= 0; o--){
