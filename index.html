@@ -1028,7 +1028,7 @@ function meCard(){
   var progress = Math.min(100, st.today / todayTarget * 100);
   var bolivarTask = h("div", {class:"bolivar-task"},
     h("div", {class:"top"},
-      h("div", {class:"target"}, remaining === 0 ? "Ziel erreicht" : remaining + " Mate", h("small", null, remaining === 0 ? "Heute: " + st.today + " / " + todayTarget : "Heute: " + st.today + " / " + todayTarget)),
+      h("div", {class:"target"}, remaining === 0 ? "Ziel erreicht" : remaining + " Mate", h("small", null, "Heute: " + st.today + " / " + todayTarget)),
       h("div", {class:"bolivar-balance"}, bolivarBalance(p.id) + " MB")),
     h("div", {class:"bolivar-progress", role:"progressbar", "aria-label":"Tagesdurchschnitts-Ziel", "aria-valuemin":"0", "aria-valuemax":String(todayTarget), "aria-valuenow":String(Math.min(st.today, todayTarget))},
       h("div", {style:"width:" + progress + "%"})),
