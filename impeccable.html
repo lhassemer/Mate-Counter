@@ -81,6 +81,21 @@ td small{display:block;color:var(--muted);font-size:11px;font-weight:400}
 .tabs{display:flex;gap:6px;margin-bottom:12px;overflow-x:auto}
 .tabs button{border:1px solid var(--line);background:var(--card);color:var(--muted);border-radius:999px;padding:8px 15px;font-weight:600;white-space:nowrap}
 .tabs button.on{background:var(--text);color:var(--bg);border-color:var(--text)}
+.matle-meta{display:flex;justify-content:space-between;gap:12px;flex-wrap:wrap;margin:14px 0;color:var(--muted);font-size:13px}
+.matle-path{display:flex;flex-direction:column;gap:8px;width:min(100%,300px);margin:18px auto}
+.matle-step{display:grid;grid-template-columns:repeat(4,1fr);gap:7px}
+.matle-step span{display:grid;place-items:center;aspect-ratio:1;border:1px solid var(--line);border-radius:8px;background:var(--bg);font-size:24px;font-weight:800}
+.matle-step span.changed{box-shadow:inset 0 0 0 2px var(--accent)}
+.matle-step span.in-target{border-color:#4a72db;background:#4a72db;color:#fff}
+.matle-step.solved span:not(.in-target){border-color:var(--up);background:var(--up);color:#fff}
+.matle-form{display:flex;gap:8px}
+.matle-form input{flex:1;text-transform:uppercase;letter-spacing:.18em}
+.matle-form .btn{flex:0 0 auto}
+.tabs button.locked{opacity:.68}
+@media(max-width:640px){
+  .matle-step span{font-size:22px}
+  .matle-form .btn{min-width:88px}
+}
 .lb{display:flex;flex-direction:column;gap:8px}
 .lbrow{display:grid;grid-template-columns:34px 1fr auto;gap:10px;align-items:center;padding:10px 12px;border:1px solid var(--line);border-radius:14px;background:var(--bg)}
 .lbrow.me{border-color:var(--accent);background:var(--accent-soft)}
@@ -305,7 +320,6 @@ code{color:var(--text);background:var(--bg);border-color:var(--line)}
   .stats.three .stat span{font-size:10px}
   .tabs{display:grid;grid-template-columns:repeat(6,minmax(0,1fr));margin:16px 0 12px;overflow:visible}
   .tabs button{grid-column:span 2;min-width:0;padding:9px 7px;font-size:12px;white-space:normal}
-  .tabs button:nth-child(4),.tabs button:nth-child(5){grid-column:span 3}
   .lbrow{grid-template-columns:34px minmax(0,1fr) auto;gap:9px;padding:13px 5px}
   .rank{width:30px;height:30px}
   .pname{font-size:15px}
@@ -578,6 +592,7 @@ button:focus-visible,input:focus-visible{
   <div id="app" aria-busy="true"><div class="empty" role="status" aria-live="polite">Lädt …</div></div>
 </div>
 
+<script src="assets/matle-words.js"></script>
 <script>
 // =====================================================================
 //  EINSTELLUNGEN: hier trägst du die zwei Werte aus Supabase ein
@@ -608,6 +623,11 @@ var chartHighlightId = null;
 var nameDraft = "", newPlayerDraft = "", brandNameDraft = "", brandColorDraft = "#8b5cf6";
 var loaded = false, loadError = "", busy = false, pendingRender = false;
 var toastTimer = null;
+var matleDraft = "";
+var matleStartsCache = null;
+var matleDistancesCache = null;
+var MATLE_WORDS = window.MATLE_WORDS;
+var MATLE_STARTS = ("BOLD BORN COLD CORD GOLD SOLD WORD LORD FORK PORK WORK WOLF FOLD FOND WORN WIND WILD GOLF HORN IRON KILO LION LOOK LOOP LOUD PINK POND PONY POUR RISK ROCK RUIN SILK SINK SLOW SNOW SOCK SOIL SOUR SPIN ZINC CURL COIL BOIL BOWL DOLL DOOR DRIP DROP FLIP FLOG FLOP FURY GORY JURY LUCK LURK NICK PLOW PLOY ROOK ROLL RUNG RUSH").split(" ");
 
 try { meId = localStorage.getItem("mate_me"); selectedBrand = localStorage.getItem("mate_brand"); undoStack = JSON.parse(localStorage.getItem("mate_undo") || "[]"); if (!Array.isArray(undoStack)) undoStack = []; } catch(e){ undoStack = []; }
 
@@ -666,6 +686,89 @@ function fmtWeek(ms){
   return "KW " + isoWeek(d) + " (" + f(d) + "–" + f(e) + ")";
 }
 function save(key, val){ try { localStorage.setItem(key, val); } catch(e){} }
+function matleLetterChanges(a, b){
+  var changes = 0;
+  for (var i = 0; i < 4; i++) if (a.charAt(i) !== b.charAt(i)) changes++;
+  return changes;
+}
+function matleChangedIndex(a, b){
+  for (var i = 0; i < 4; i++) if (a.charAt(i) !== b.charAt(i)) return i;
+  return -1;
+}
+function matleDistances(){
+  if (!matleDistancesCache){
+    var buckets = {};
+    MATLE_WORDS.forEach(function(word){
+      for (var i = 0; i < 4; i++){
+        var pattern = word.slice(0, i) + "_" + word.slice(i + 1);
+        (buckets[pattern] = buckets[pattern] || []).push(word);
+      }
+    });
+    var distances = {MATE:0}, queue = ["MATE"], head = 0;
+    while (head < queue.length){
+      var current = queue[head++];
+      for (var j = 0; j < 4; j++){
+        var neighbors = buckets[current.slice(0, j) + "_" + current.slice(j + 1)] || [];
+        neighbors.forEach(function(next){
+          if (distances[next] === undefined){
+            distances[next] = distances[current] + 1;
+            queue.push(next);
+          }
+        });
+      }
+    }
+    matleDistancesCache = distances;
+  }
+  return matleDistancesCache;
+}
+function matleDistance(start){
+  var distance = matleDistances()[start];
+  return distance === undefined ? Infinity : distance;
+}
+function matleDailyStart(){
+  if (!matleStartsCache){
+    matleStartsCache = MATLE_STARTS.filter(function(word){
+      var distance = matleDistance(word);
+      return word !== "MATE" && !/[MATE]/.test(word) && distance > 1 && distance < Infinity;
+    });
+  }
+  var day = dayNum(dayKey(new Date()));
+  return matleStartsCache[(day * 7 + 13) % matleStartsCache.length];
+}
+function matleStorageKey(){
+  return "matle_" + meId + "_" + dayKey(new Date());
+}
+function matleState(start){
+  try {
+    var saved = JSON.parse(localStorage.getItem(matleStorageKey()) || "null");
+    if (saved && saved.start === start && Array.isArray(saved.words) && saved.words[0] === start){
+      var valid = true, seen = {};
+      saved.words.forEach(function(word, i){
+        if (typeof word !== "string" || MATLE_WORDS.indexOf(word) < 0 || seen[word] ||
+            (i > 0 && matleLetterChanges(saved.words[i-1], word) !== 1)) valid = false;
+        seen[word] = true;
+      });
+      if (valid) return saved;
+    }
+  } catch(e){}
+  return {start:start, words:[start]};
+}
+function submitMatleGuess(){
+  var state = matleState(matleDailyStart());
+  var guess = matleDraft.trim().toUpperCase();
+  if (state.words[state.words.length - 1] === "MATE") return;
+  if (!/^[A-Z]{4}$/.test(guess)) return toast("Gib ein Wort mit genau vier Buchstaben ein");
+  if (MATLE_WORDS.indexOf(guess) < 0) return toast("Dieses Wort ist nicht im Matle-Wörterbuch");
+  if (matleLetterChanges(state.words[state.words.length - 1], guess) !== 1) return toast("Ändere genau einen Buchstaben");
+  if (state.words.indexOf(guess) >= 0) return toast("Dieses Wort war schon dran");
+  state.words.push(guess);
+  save(matleStorageKey(), JSON.stringify(state));
+  matleDraft = "";
+  var input = document.getElementById("matle-guess");
+  if (input) input.blur();
+  render();
+  if (guess === "MATE") toast("Geschafft! Du hast MATE erreicht");
+}
 
 // ---------- Supabase (REST) ----------
 function headers(extra){
@@ -893,6 +996,7 @@ function render(){
     if (tab === "records") f.appendChild(recordsCard());
     if (tab === "charts") f.appendChild(chartsCard());
     if (tab === "brands") f.appendChild(brandsCard());
+    if (tab === "matle") f.appendChild(matleCard());
   }
   app.setAttribute("aria-busy", !loaded && !loadError && configured ? "true" : "false");
   app.replaceChildren(f);
@@ -993,7 +1097,53 @@ function meCard(){
 
 function tabsEl(){
   function t(id, label){ return h("button", {class:tab === id ? "on" : "", "aria-current":tab === id ? "page" : null, onclick:function(){ tab = id; render(); }}, label); }
-  return h("nav", {class:"tabs", "aria-label":"Statistikansichten"}, t("board","Rangliste"), t("week","Woche"), t("records","Rekorde"), t("charts","Charts"), t("brands","Marken & Verlauf"));
+  var gameOpen = !!(me() && stats(drinksBy[meId]).today > 0);
+  var game = h("button", {class:(tab === "matle" ? "on " : "") + (gameOpen ? "" : "locked"),
+    "aria-current":tab === "matle" ? "page" : null,
+    "aria-label":gameOpen ? "Matle" : "Matle (gesperrt: heute Mate trinken)",
+    onclick:function(){ tab = "matle"; render(); }}, gameOpen ? "Matle" : "Matle (gesperrt)");
+  return h("nav", {class:"tabs", "aria-label":"Statistik und Spiele"},
+    t("board","Rangliste"), t("week","Woche"), t("records","Rekorde"), t("charts","Charts"), t("brands","Marken & Verlauf"), game);
+}
+
+function matleCard(){
+  if (!me()) return h("div", {class:"card"},
+    h("h2", null, "Matle ist gesperrt"),
+    h("p", {class:"muted"}, "Wähle zuerst deinen Namen und trinke heute einen Mate, um das Spiel freizuschalten."));
+  if (stats(drinksBy[meId]).today < 1) return h("div", {class:"card"},
+    h("h2", null, "Matle ist gesperrt"),
+    h("p", {class:"muted"}, "Trinke und protokolliere heute mindestens einen Mate, um Matle freizuschalten."));
+
+  var start = matleDailyStart(), state = matleState(start);
+  var moves = state.words.length - 1, shortest = matleDistance(start);
+  var won = state.words[state.words.length - 1] === "MATE";
+  var rows = state.words.map(function(word, i){
+    var changed = i > 0 ? matleChangedIndex(state.words[i-1], word) : -1;
+    return h("div", {class:"matle-step" + (won ? " solved" : ""), role:"listitem", "aria-label":"Schritt " + i + ": " + word},
+      word.split("").map(function(letter, j){
+        var classes = [];
+        if (j === changed) classes.push("changed");
+        if ("MATE".indexOf(letter) >= 0) classes.push("in-target");
+        return h("span", {class:classes.join(" "), "aria-hidden":"true"}, letter);
+      }));
+  });
+  var form = won ? null : h("form", {class:"matle-form", onsubmit:function(e){ e.preventDefault(); submitMatleGuess(); }},
+    h("label", {class:"sr-only", for:"matle-guess"}, "Nächstes vierbuchstabiges Wort"),
+    h("input", {id:"matle-guess", type:"text", maxlength:"4", autocomplete:"off", autocapitalize:"characters",
+      spellcheck:"false", placeholder:"WORT", value:matleDraft,
+      oninput:function(e){ matleDraft = e.target.value; },
+      onkeydown:function(e){ if (e.key === "Enter"){ e.preventDefault(); submitMatleGuess(); } }}),
+    h("button", {class:"btn", type:"submit"}, "Eintragen"));
+  return h("div", {class:"card"},
+    h("h2", null, "Matle"),
+    h("p", {class:"muted"}, "Ändere pro Zug genau einen Buchstaben. Jedes Wort muss vier Buchstaben haben und im Wörterbuch stehen. Erreiche MATE in so wenigen Zügen wie möglich."),
+    h("p", {class:"muted small"}, "Blau = Buchstabe aus MATE; der Rahmen markiert den zuletzt geänderten Buchstaben."),
+    h("div", {class:"matle-meta"},
+      h("span", null, "Start: ", h("b", null, start)),
+      h("span", null, "Kürzester Weg: ", h("b", null, shortest), shortest === 1 ? " Zug" : " Züge"),
+      h("span", null, "Deine Züge: ", h("b", null, moves))),
+    h("div", {class:"matle-path", role:"list", "aria-label":"Dein Wortweg"}, rows),
+    won ? h("div", {class:"banner"}, moves === shortest ? "Perfekt – das war der kürzeste Weg!" : "Geschafft in " + moves + " Zügen. Der kürzeste Weg sind " + shortest + " Züge.") : form);
 }
 
 function boardCard(){
