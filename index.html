@@ -624,6 +624,9 @@ var nameDraft = "", newPlayerDraft = "", brandNameDraft = "", brandColorDraft = 
 var loaded = false, loadError = "", busy = false, pendingRender = false;
 var toastTimer = null;
 var matleDraft = "";
+var matleResults = [];
+var matleResultsError = "";
+var matleSaving = false;
 var matleStartsCache = null;
 var matleDistancesCache = null;
 var MATLE_WORDS = window.MATLE_WORDS;
@@ -753,6 +756,42 @@ function matleState(start){
   } catch(e){}
   return {start:start, words:[start]};
 }
+function matleResultError(e){
+  var msg = String(e && e.message || e);
+  if (/PGRST205|42P01|does not exist|Could not find the table/i.test(msg)){
+    return "Die Matle-Ergebnistabelle fehlt. Führe matle-results.sql im Supabase SQL Editor aus.";
+  }
+  if (/401|403|permission denied|row-level security/i.test(msg)){
+    return "Kein Zugriff auf Matle-Ergebnisse. Prüfe die Berechtigungen in matle-results.sql.";
+  }
+  return "Matle-Ergebnisse konnten nicht geladen oder geteilt werden: " + msg;
+}
+async function shareMatleResult(moves){
+  if (matleSaving) return;
+  matleSaving = true;
+  render();
+  try {
+    await api("matle_results", "POST", {
+      player_id:meId,
+      game_date:dayKey(new Date()),
+      moves:moves
+    }, "return=representation");
+    matleResultsError = "";
+    toast("Geschafft! Ergebnis geteilt");
+    await load();
+  } catch (e) {
+    if (e.status === 409){
+      await load();
+    } else {
+      matleResultsError = matleResultError(e);
+      toast("Geschafft, aber Ergebnis konnte nicht geteilt werden");
+      render();
+    }
+  } finally {
+    matleSaving = false;
+    render();
+  }
+}
 function submitMatleGuess(){
   var state = matleState(matleDailyStart());
   var guess = matleDraft.trim().toUpperCase();
@@ -764,10 +803,8 @@ function submitMatleGuess(){
   state.words.push(guess);
   save(matleStorageKey(), JSON.stringify(state));
   matleDraft = "";
-  var input = document.getElementById("matle-guess");
-  if (input) input.blur();
-  render();
-  if (guess === "MATE") toast("Geschafft! Du hast MATE erreicht");
+  render(true);
+  if (guess === "MATE") shareMatleResult(state.words.length - 1);
 }
 
 // ---------- Supabase (REST) ----------
@@ -826,6 +863,15 @@ async function load(){
     else if (/401|403|Invalid API key/i.test(msg)) hint = "Zugriff verweigert. Prüfe den Key in der index.html und ob setup.sql ausgeführt wurde.";
     else if (/Failed to fetch|NetworkError|Load failed/i.test(msg)) hint = "Keine Verbindung zu Supabase. Prüfe die URL in der index.html (ohne /rest/v1/) und ob das Projekt pausiert ist.";
     loadError = hint + " (Details: " + msg + ")";
+  }
+  if (loaded && !loadError){
+    try {
+      matleResults = await fetchAll("matle_results?select=player_id,game_date,moves&game_date=eq." + dayKey(new Date()) + "&order=moves.asc");
+      matleResultsError = "";
+    } catch (e) {
+      matleResults = [];
+      matleResultsError = matleResultError(e);
+    }
   }
   render();
 }
@@ -973,9 +1019,9 @@ async function createBrand(){
 }
 
 // ---------- Rendering ----------
-function render(){
+function render(preserveMatleFocus){
   var ae = document.activeElement;
-  if (ae && ae.tagName === "INPUT" && app.contains(ae)) { pendingRender = true; return; }
+  if (!preserveMatleFocus && ae && ae.tagName === "INPUT" && app.contains(ae)) { pendingRender = true; return; }
   pendingRender = false;
   var f = document.createDocumentFragment();
 
@@ -1000,6 +1046,13 @@ function render(){
   }
   app.setAttribute("aria-busy", !loaded && !loadError && configured ? "true" : "false");
   app.replaceChildren(f);
+  if (preserveMatleFocus){
+    var matleInput = document.getElementById("matle-guess");
+    if (matleInput){
+      matleInput.focus();
+      matleInput.setSelectionRange(matleInput.value.length, matleInput.value.length);
+    }
+  }
 }
 
 function identityCard(){
@@ -1107,16 +1160,23 @@ function tabsEl(){
 }
 
 function matleCard(){
-  if (!me()) return h("div", {class:"card"},
-    h("h2", null, "Matle ist gesperrt"),
-    h("p", {class:"muted"}, "Wähle zuerst deinen Namen und trinke heute einen Mate, um das Spiel freizuschalten."));
-  if (stats(drinksBy[meId]).today < 1) return h("div", {class:"card"},
-    h("h2", null, "Matle ist gesperrt"),
-    h("p", {class:"muted"}, "Trinke und protokolliere heute mindestens einen Mate, um Matle freizuschalten."));
+  if (!me()) return h("div", null,
+    h("div", {class:"card"},
+      h("h2", null, "Matle ist gesperrt"),
+      h("p", {class:"muted"}, "Wähle zuerst deinen Namen und trinke heute einen Mate, um das Spiel freizuschalten.")),
+    matleScoreboard());
+  if (stats(drinksBy[meId]).today < 1) return h("div", null,
+    h("div", {class:"card"},
+      h("h2", null, "Matle ist gesperrt"),
+      h("p", {class:"muted"}, "Trinke und protokolliere heute mindestens einen Mate, um Matle freizuschalten.")),
+    matleScoreboard());
 
   var start = matleDailyStart(), state = matleState(start);
   var moves = state.words.length - 1, shortest = matleDistance(start);
   var won = state.words[state.words.length - 1] === "MATE";
+  var resultSaved = matleResults.some(function(result){
+    return result.player_id === meId && result.game_date === dayKey(new Date());
+  });
   var rows = state.words.map(function(word, i){
     var changed = i > 0 ? matleChangedIndex(state.words[i-1], word) : -1;
     return h("div", {class:"matle-step" + (won ? " solved" : ""), role:"listitem", "aria-label":"Schritt " + i + ": " + word},
@@ -1134,16 +1194,40 @@ function matleCard(){
       oninput:function(e){ matleDraft = e.target.value; },
       onkeydown:function(e){ if (e.key === "Enter"){ e.preventDefault(); submitMatleGuess(); } }}),
     h("button", {class:"btn", type:"submit"}, "Eintragen"));
+  return h("div", null,
+    h("div", {class:"card"},
+      h("h2", null, "Matle"),
+      h("p", {class:"muted"}, "Ändere pro Zug genau einen Buchstaben. Jedes Wort muss vier Buchstaben haben und im Wörterbuch stehen. Erreiche MATE in so wenigen Zügen wie möglich."),
+      h("p", {class:"muted small"}, "Blau = Buchstabe aus MATE; der Rahmen markiert den zuletzt geänderten Buchstaben."),
+      h("div", {class:"matle-meta"},
+        h("span", null, "Start: ", h("b", null, start)),
+        h("span", null, "Kürzester Weg: ", h("b", null, shortest), shortest === 1 ? " Zug" : " Züge"),
+        h("span", null, "Deine Züge: ", h("b", null, moves))),
+      h("div", {class:"matle-path", role:"list", "aria-label":"Dein Wortweg"}, rows),
+      won ? h("div", {class:"banner"}, moves === shortest ? "Perfekt – das war der kürzeste Weg!" : "Geschafft in " + moves + " Zügen. Der kürzeste Weg sind " + shortest + " Züge.") : form,
+      won && !resultSaved ? h("button", {class:"btn sm", disabled:matleSaving, onclick:function(){ shareMatleResult(moves); }},
+        matleSaving ? "Wird geteilt …" : "Ergebnis teilen") : null),
+    matleScoreboard());
+}
+
+function matleScoreboard(){
+  var today = dayKey(new Date());
+  var scores = matleResults.filter(function(result){ return result.game_date === today; }).map(function(result){
+    var player = players.find(function(p){ return p.id === result.player_id; });
+    return player ? {player:player, moves:+result.moves} : null;
+  }).filter(function(result){ return result !== null; });
+  scores.sort(function(a,b){ return a.moves - b.moves || a.player.name.localeCompare(b.player.name, "de"); });
+  var rows = scores.map(function(result, i){
+    return h("div", {class:"lbrow" + (result.player.id === meId ? " me" : "")},
+      h("div", {class:"rank"}, i + 1),
+      h("div", {class:"pname"}, result.player.name + (result.player.id === meId ? " (du)" : "")),
+      h("div", {class:"ptotal"}, result.moves, h("small", null, result.moves === 1 ? "Zug" : "Züge")));
+  });
   return h("div", {class:"card"},
-    h("h2", null, "Matle"),
-    h("p", {class:"muted"}, "Ändere pro Zug genau einen Buchstaben. Jedes Wort muss vier Buchstaben haben und im Wörterbuch stehen. Erreiche MATE in so wenigen Zügen wie möglich."),
-    h("p", {class:"muted small"}, "Blau = Buchstabe aus MATE; der Rahmen markiert den zuletzt geänderten Buchstaben."),
-    h("div", {class:"matle-meta"},
-      h("span", null, "Start: ", h("b", null, start)),
-      h("span", null, "Kürzester Weg: ", h("b", null, shortest), shortest === 1 ? " Zug" : " Züge"),
-      h("span", null, "Deine Züge: ", h("b", null, moves))),
-    h("div", {class:"matle-path", role:"list", "aria-label":"Dein Wortweg"}, rows),
-    won ? h("div", {class:"banner"}, moves === shortest ? "Perfekt – das war der kürzeste Weg!" : "Geschafft in " + moves + " Zügen. Der kürzeste Weg sind " + shortest + " Züge.") : form);
+    h("h2", null, "Matle-Tagesergebnisse"),
+    matleResultsError ? h("div", {class:"banner warn"}, matleResultsError) : null,
+    rows.length ? h("div", {class:"lb"}, rows) :
+      matleResultsError ? null : h("div", {class:"empty"}, "Noch hat heute niemand Matle beendet."));
 }
 
 function boardCard(){
