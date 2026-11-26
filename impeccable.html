@@ -576,10 +576,84 @@ button:focus-visible,input:focus-visible{
 @media(prefers-color-scheme:dark){
   button:focus-visible,input:focus-visible{outline-color:#fbe600}
 }
+@keyframes matle-intro-pop{
+  from{opacity:0;transform:translateY(16px) rotate(-3deg) scale(.92)}
+  to{opacity:1;transform:translateY(0) rotate(-1deg) scale(1)}
+}
+@keyframes matle-fire-flicker{
+  from{transform:scaleY(.82) skewX(-3deg)}
+  to{transform:scaleY(1.08) skewX(3deg)}
+}
+@keyframes matle-fire-glow{
+  0%,100%{opacity:.72}
+  50%{opacity:1}
+}
+.matle-intro{
+  position:fixed;z-index:20;inset:0;display:grid;place-items:center;
+  overflow:hidden;padding:24px;
+  color:#fff;background:
+    radial-gradient(ellipse at 50% 110%,rgba(255,199,0,.42),transparent 44%),
+    repeating-linear-gradient(0deg,rgba(255,255,255,.025) 0 2px,transparent 2px 5px),
+    #120b20;
+}
+.matle-intro[hidden]{display:none}
+.matle-intro:before{
+  content:"";position:absolute;inset:auto -12% -18%;height:43%;
+  background:
+    radial-gradient(ellipse at 12% 100%,#ffdf23 0 12%,#ff6a00 34%,#f12316 58%,transparent 72%),
+    radial-gradient(ellipse at 38% 100%,#fff044 0 11%,#ff7a00 34%,#ed241b 58%,transparent 72%),
+    radial-gradient(ellipse at 64% 100%,#ffdf23 0 12%,#ff6900 34%,#e92026 58%,transparent 72%),
+    radial-gradient(ellipse at 88% 100%,#fff044 0 11%,#ff7600 34%,#ed241b 58%,transparent 72%);
+  filter:blur(3px);transform-origin:bottom;animation:matle-fire-flicker .55s ease-in-out infinite alternate;
+}
+.matle-intro:after{
+  content:"";position:absolute;inset:0;pointer-events:none;
+  background:linear-gradient(135deg,transparent 35%,rgba(255,255,255,.08) 50%,transparent 65%);
+  background-size:250% 250%;animation:matle-fire-glow 2.4s steps(2,end) infinite;
+}
+.intro-poster{
+  position:relative;z-index:1;width:min(100%,560px);padding:clamp(28px,7vw,52px) 22px 30px;
+  border:4px solid #fff03b;outline:3px solid #f23a18;
+  background:linear-gradient(160deg,rgba(31,13,39,.96),rgba(8,19,43,.97));
+  box-shadow:10px 10px 0 #f23a18,20px 20px 0 rgba(255,205,0,.65),0 0 48px rgba(255,77,0,.5);
+  text-align:center;animation:matle-intro-pop .65s cubic-bezier(.16,1,.3,1) both;
+}
+.intro-badge{
+  display:inline-block;padding:5px 12px;border:2px solid #fff03b;
+  color:#fff03b;font-size:13px;font-weight:900;letter-spacing:.18em;
+  text-transform:uppercase;transform:rotate(2deg);
+}
+.intro-title{
+  margin:20px 0 8px;color:#fff;font-family:BarlowCondensed,Impact,sans-serif;
+  font-size:clamp(48px,12vw,88px);font-weight:900;line-height:.84;
+  letter-spacing:-.035em;text-shadow:4px 4px 0 #f23a18,8px 8px 0 #ffb000;
+  text-transform:uppercase;
+}
+.intro-title span{display:block;margin-top:12px;color:#fff03b}
+.intro-copy{margin:20px 0 22px;color:#fff;font-size:18px;font-weight:800}
+.intro-dismiss{
+  width:100%;max-width:330px;min-height:52px;border:3px solid #fff;
+  background:#fff03b;color:#160f19;font:900 20px/1 BarlowCondensed,Impact,sans-serif;
+  letter-spacing:.06em;text-transform:uppercase;box-shadow:5px 5px 0 #f23a18;
+}
+.intro-dismiss:hover{background:#fff;color:#f23a18}
+.intro-footnote{display:block;margin-top:18px;color:#d9cbdc;font-size:12px}
+@media(prefers-reduced-motion:reduce){
+  .matle-intro:before,.matle-intro:after,.intro-poster{animation:none}
+}
 </style>
 </head>
 <body>
-<div class="wrap">
+<div class="matle-intro" id="matle-intro" role="dialog" aria-modal="true" aria-labelledby="matle-intro-title" aria-describedby="matle-intro-copy">
+  <div class="intro-poster">
+    <span class="intro-badge">Brandneues Matle!</span>
+    <h2 class="intro-title" id="matle-intro-title">Drink a Mate<span>Do the Matle</span></h2>
+    <p class="intro-copy" id="matle-intro-copy">Vier Buchstaben. Null Würde. Unendlich Mate.</p>
+    <button class="intro-dismiss" id="matle-intro-dismiss" type="button" autofocus>Okay, ich matle!</button>
+    <small class="intro-footnote">Warnung: Kann spontane Wortspiele auslösen.</small>
+  </div>
+</div>
+<div class="wrap" inert>
   <header>
     <div class="logo">
       <img src="assets/El-Tony-Mate-Logo.png" alt="El Tony Mate">
@@ -589,7 +663,7 @@ button:focus-visible,input:focus-visible{
       <p>Wer trinkt am meisten? Rangliste, Streaks &amp; Trends</p>
     </div>
   </header>
-  <div id="app" aria-busy="true"><div class="empty" role="status" aria-live="polite">Lädt …</div></div>
+  <div id="app" aria-busy="true" tabindex="-1"><div class="empty" role="status" aria-live="polite">Lädt …</div></div>
 </div>
 
 <script src="assets/matle-words.js"></script>
@@ -1526,6 +1600,23 @@ function chartsCard(){
 }
 
 app.addEventListener("focusout", function(){ setTimeout(function(){ if (pendingRender) render(); }, 60); });
+
+var intro = document.getElementById("matle-intro");
+var introDismiss = document.getElementById("matle-intro-dismiss");
+function dismissMatleIntro(){
+  intro.hidden = true;
+  document.querySelector(".wrap").removeAttribute("inert");
+  app.focus();
+}
+introDismiss.addEventListener("click", dismissMatleIntro);
+document.addEventListener("keydown", function(event){
+  if (intro.hidden) return;
+  if (event.key === "Escape") dismissMatleIntro();
+  else if (event.key === "Tab") {
+    event.preventDefault();
+    introDismiss.focus();
+  }
+});
 
 // ---------- Start ----------
 render();
